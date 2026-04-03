@@ -1,0 +1,109 @@
+bundle:
+  name: budget-enforcer
+
+variables:
+  catalog:
+    description: Unity Catalog name for the budget control tables
+    default: serverless_stable_5rb6za_catalog
+  schema:
+    description: Schema name for budget control tables
+    default: budget_control
+  budget_threshold:
+    description: Monthly budget threshold in dollars
+    default: "50000"
+  warehouse_id:
+    description: SQL Warehouse ID for the budget check query
+  exempt_job_ids:
+    description: Comma-separated list of job IDs to exempt from pausing
+    default: ""
+
+workspace:
+  root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  schemas:
+    budget_control:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: "Schema for budget enforcer tracking tables"
+      grants:
+        - principal: account users
+          privileges:
+            - USE_SCHEMA
+
+  jobs:
+    budget_enforcer:
+      name: "[${bundle.target}] Budget Enforcer"
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: CheckBudget
+          notebook_task:
+            notebook_path: ./src/budget_check.py
+            source: WORKSPACE
+            base_parameters:
+              budget_threshold: ${var.budget_threshold}
+
+        - task_key: IsOverBudget
+          depends_on:
+            - task_key: CheckBudget
+          condition_task:
+            op: EQUAL_TO
+            left: "{{tasks.CheckBudget.values.budget_status}}"
+            right: OVER_BUDGET
+
+        - task_key: StopActivity
+          depends_on:
+            - task_key: IsOverBudget
+              outcome: "true"
+          notebook_task:
+            notebook_path: ./src/activity_stopper.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              table: paused_jobs
+              exempt_job_ids: ${var.exempt_job_ids}
+              current_job_id: "{{job.id}}"
+              resumer_job_id: ${resources.jobs.budget_resumer.id}
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
+    budget_resumer:
+      name: "[${bundle.target}] Budget Resumer"
+      schedule:
+        quartz_cron_expression: "0 0 0 1 * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: ResumeActivity
+          notebook_task:
+            notebook_path: ./src/activity_resumer.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              table: paused_jobs
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      warehouse_id: 8c622aa24ea3a6da
+      budget_threshold: "50000"
+
+
+  prod:
+    mode: production
+    variables:
+      warehouse_id: ${var.warehouse_id}
+      budget_threshold: "100000"
+    run_as:
+      service_principal_name: budget-enforcer-sp
