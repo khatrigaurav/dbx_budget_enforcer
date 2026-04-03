@@ -4,7 +4,7 @@ Automated workspace budget enforcement that monitors monthly spend and takes pro
 
 Repo Structure : 
  - Budget Enforcer.py : Notebook to run directly
- - dab-budget-enforcer/ : Folder to be used to deploy the DAB directly.
+ - dab-budget-enforcer/ : Folder to be used to deploy the DAB directly. This enables a Databricks Jobs with a Budget Enforcer and Budget Resumer Job.
 
 ## Architecture
 
