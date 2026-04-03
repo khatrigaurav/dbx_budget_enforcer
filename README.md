@@ -2,6 +2,10 @@
 
 Automated workspace budget enforcement that monitors monthly spend and takes protective action when a configurable threshold is exceeded.
 
+Repo Structure : 
+ - Budget Enforcer.py : Notebook to run directly
+ - dab-budget-enforcer/ : Folder to be used to deploy the DAB directly.
+
 ## Architecture
 
 ```
