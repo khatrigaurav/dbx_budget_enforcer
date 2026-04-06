@@ -18,6 +18,7 @@ TABLE = dbutils.widgets.get("table")
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.jobs import JobSettings, CronSchedule, Continuous, TriggerSettings, PauseStatus
+from pyspark.sql import functions as F
 
 w = WorkspaceClient()
 
@@ -99,7 +100,12 @@ print(f"--- Starting Workspace Resume from {CATALOG}.{SCHEMA}.{TABLE} ---")
 
 try:
     df = spark.table(f"{CATALOG}.{SCHEMA}.{TABLE}")
-    rows = df.collect()
+
+    # 2. Define the target month (Last Month)
+    # current_date() gets 2026-04-06, add_months -1 gets 2026-03-06, format sets it to '2026-03'
+    last_month_str = F.date_format(F.add_months(F.current_date(), -1), "yyyy-MM")
+    rows = df.filter(F.col("month") == last_month_str).collect()
+
 
     if not rows:
         print("No resources to resume.")

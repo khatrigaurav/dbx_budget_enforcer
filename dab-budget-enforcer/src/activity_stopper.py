@@ -114,7 +114,7 @@ for job in w.jobs.list():
 
         w.jobs.update(job_id=job.job_id, new_settings=new_settings)
 
-        log("JOB", "PAUSED", job.job_id, settings.name)
+        log("JOB", "STOPPED", job.job_id, settings.name)
         print(f"Paused job {job.job_id} ({settings.name})")
 
     except Exception as e:
@@ -201,7 +201,7 @@ if records:
 
     df = spark.createDataFrame(records, cols)
 
-    df.write.mode("overwrite").saveAsTable(
+    df.write.mode("append").saveAsTable(
         f"{catalog_name}.{schema_name}.{table_name}"
     )
 
