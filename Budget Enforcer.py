@@ -214,7 +214,7 @@ from databricks.sdk.service.jobs import JobSettings, CronSchedule, TriggerSettin
 paused_df = spark.sql(f"""
   SELECT DISTINCT job_id, job_name
   FROM {catalog_name}.{schema_name}.{table_name}
-  WHERE paused_by = 'budget_enforcer'
+  WHERE acted_by = 'budget_enforcer'
 """)
 
 
