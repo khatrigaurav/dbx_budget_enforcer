@@ -4,18 +4,25 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog name for the budget control tables
-    default: serverless_stable_5rb6za_catalog
+    default: serverless_stable_7n3jad_catalog
   schema:
     description: Schema name for budget control tables
     default: budget_control
   budget_threshold:
     description: Monthly budget threshold in dollars
     default: "50000"
-  warehouse_id:
-    description: SQL Warehouse ID for the budget check query
-  exempt_job_ids:
-    description: Comma-separated list of job IDs to exempt from pausing
-    default: ""
+  target_clusters:
+    description: "Selective kill switch for all-purpose compute. Set to ALL to terminate every active cluster, or provide a comma-separated list of cluster IDs to only terminate those specific clusters (e.g. 0410-123456-abc123,0410-789012-def456)"
+    default: "ALL"
+  target_jobs:
+    description: "Selective kill switch for job compute. Set to ALL to pause every job, or provide a comma-separated list of job IDs to only pause those specific jobs. Always quote numeric IDs (e.g. \"711404742026056,444555666\"). The enforcer and resumer jobs are always exempt regardless of this setting"
+    default: "ALL"
+  target_warehouses:
+    description: "Selective kill switch for SQL warehouses. Set to ALL to stop every warehouse, or provide a comma-separated list of warehouse IDs to only stop those specific warehouses (e.g. 8c622aa24ea3a6da,a1b2c3d4e5f6)"
+    default: "ALL"
+  target_apps:
+    description: "Selective kill switch for Databricks Apps. Set to ALL to stop every app, or provide a comma-separated list of app names to only stop those specific apps (e.g. my-dashboard-app,data-explorer)"
+    default: "ALL"
 
 workspace:
   root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
@@ -65,9 +72,12 @@ resources:
               catalog: ${var.catalog}
               schema: ${var.schema}
               table: paused_jobs
-              exempt_job_ids: ${var.exempt_job_ids}
               current_job_id: "{{job.id}}"
               resumer_job_id: ${resources.jobs.budget_resumer.id}
+              target_clusters: ${var.target_clusters}
+              target_jobs: ${var.target_jobs}
+              target_warehouses: ${var.target_warehouses}
+              target_apps: ${var.target_apps}
       queue:
         enabled: true
       performance_target: PERFORMANCE_OPTIMIZED
@@ -96,14 +106,13 @@ targets:
     mode: development
     default: true
     variables:
-      warehouse_id: 8c622aa24ea3a6da
       budget_threshold: "50000"
+      target_jobs: "230001808620939"
 
 
   prod:
     mode: production
     variables:
-      warehouse_id: ${var.warehouse_id}
       budget_threshold: "100000"
     run_as:
       service_principal_name: budget-enforcer-sp
