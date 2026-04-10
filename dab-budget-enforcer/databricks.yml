@@ -222,11 +222,3 @@ targets:
     run_as:
       service_principal_name: budget-enforcer-sp
 
-
-
-  prod:
-    mode: production
-    variables:
-      budget_threshold: "100000"
-    run_as:
-      service_principal_name: budget-enforcer-sp
