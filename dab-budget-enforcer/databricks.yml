@@ -101,14 +101,127 @@ resources:
         enabled: true
       performance_target: PERFORMANCE_OPTIMIZED
 
+bundle:
+  name: budget-enforcer
+
+variables:
+  catalog:
+    description: Unity Catalog name for the budget control tables
+    default: serverless_stable_7n3jad_catalog
+  schema:
+    description: Schema name for budget control tables
+    default: budget_control
+  budget_threshold:
+    description: Monthly budget threshold in dollars
+    default: "50000"
+  target_clusters:
+    description: "Selective kill switch for all-purpose compute. Set to ALL to terminate every active cluster, or provide a comma-separated list of cluster IDs to only terminate those specific clusters (e.g. 0410-123456-abc123,0410-789012-def456)"
+    default: "ALL"
+  target_jobs:
+    description: "Selective kill switch for job compute. Set to ALL to pause every job, or provide a comma-separated list of job IDs to only pause those specific jobs. Always quote numeric IDs (e.g. \"711404742026056,444555666\"). The enforcer and resumer jobs are always exempt regardless of this setting"
+    default: "ALL"
+  target_warehouses:
+    description: "Selective kill switch for SQL warehouses. Set to ALL to stop every warehouse, or provide a comma-separated list of warehouse IDs to only stop those specific warehouses (e.g. 8c622aa24ea3a6da,a1b2c3d4e5f6)"
+    default: "ALL"
+  target_apps:
+    description: "Selective kill switch for Databricks Apps. Set to ALL to stop every app, or provide a comma-separated list of app names to only stop those specific apps (e.g. my-dashboard-app,data-explorer)"
+    default: "ALL"
+
+workspace:
+  root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  schemas:
+    budget_control:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: "Schema for budget enforcer tracking tables"
+      grants:
+        - principal: account users
+          privileges:
+            - USE_SCHEMA
+
+  jobs:
+    budget_enforcer:
+      name: "[${bundle.target}] Budget Enforcer"
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: CheckBudget
+          notebook_task:
+            notebook_path: ./src/budget_check.py
+            source: WORKSPACE
+            base_parameters:
+              budget_threshold: ${var.budget_threshold}
+
+        - task_key: IsOverBudget
+          depends_on:
+            - task_key: CheckBudget
+          condition_task:
+            op: EQUAL_TO
+            left: "{{tasks.CheckBudget.values.budget_status}}"
+            right: OVER_BUDGET
+
+        - task_key: StopActivity
+          depends_on:
+            - task_key: IsOverBudget
+              outcome: "true"
+          notebook_task:
+            notebook_path: ./src/activity_stopper.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              table: paused_jobs
+              current_job_id: "{{job.id}}"
+              resumer_job_id: ${resources.jobs.budget_resumer.id}
+              target_clusters: ${var.target_clusters}
+              target_jobs: ${var.target_jobs}
+              target_warehouses: ${var.target_warehouses}
+              target_apps: ${var.target_apps}
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
+    budget_resumer:
+      name: "[${bundle.target}] Budget Resumer"
+      schedule:
+        quartz_cron_expression: "0 0 0 1 * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: ResumeActivity
+          notebook_task:
+            notebook_path: ./src/activity_resumer.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              table: paused_jobs
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
 targets:
   dev:
     mode: development
     default: true
     variables:
       budget_threshold: "50000"
-      target_jobs: "230001808620939"
-      target_warehouses: "df28338d7b36a21b"
+      # target_jobs: "230001808620939,461639751727888,90209504452158"
+      # target_warehouses: "56a3eab8f0442c4c,df28338d7b36a21b"
+      # target_apps: "hello-world,app2"
+
+
+  prod:
+    mode: production
+    variables:
+      budget_threshold: "100000"
+    run_as:
+      service_principal_name: budget-enforcer-sp
+
 
 
   prod:
