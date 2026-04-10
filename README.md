@@ -108,19 +108,57 @@ All configuration is managed through bundle variables in `databricks.yml`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `catalog` | Unity Catalog for tracking tables | `serverless_stable_5rb6za_catalog` |
+| `catalog` | Unity Catalog for tracking tables | `serverless_stable_7n3jad_catalog` |
 | `schema` | Schema for tracking tables | `budget_control` |
 | `budget_threshold` | Monthly spend limit in dollars | `50000` |
-| `warehouse_id` | SQL Warehouse for the budget check query | *(required)* |
-| `exempt_job_ids` | Comma-separated job IDs to never pause | `""` |
+
+### Selective Kill Switch
+
+By default, the enforcer stops **all** resources of each type. Use the `target_*` variables to restrict enforcement to specific resources.
+
+| Variable | Resource Type | ID Format | How to find the ID | Default |
+|----------|--------------|-----------|-------------------|---------|
+| `target_clusters` | All-purpose compute | Cluster ID (e.g. `0410-123456-abc123`) | Compute page or `databricks clusters list` | `ALL` |
+| `target_jobs` | Job compute / scheduled jobs | Job ID (e.g. `230001808620939`) | Jobs page URL or `databricks jobs list` | `ALL` |
+| `target_warehouses` | SQL Warehouses | Warehouse ID (e.g. `8c622aa24ea3a6da`) | SQL Warehouses page or `databricks warehouses list` | `ALL` |
+| `target_apps` | Databricks Apps | App name (e.g. `my-dashboard-app`) | Apps page or `databricks apps list` | `ALL` |
+
+#### Behavior
+
+| Setting | Behavior |
+|---------|----------|
+| `"ALL"` (default) | Stops **every** resource of that type (except enforcer/resumer) |
+| `"id1,id2,id3"` | Stops **only** the listed resources; all others are left untouched |
+| Not set / empty | Same as `"ALL"` |
+
+> **Important:** Always quote numeric IDs in YAML (e.g. `target_jobs: "230001808620939"`). Unquoted numbers can be mangled by YAML parsing (scientific notation, float conversion). The code handles this defensively, but quoting is the safest practice.
+
+> **Protection:** The enforcer job and resumer job are always exempt regardless of these settings. The enforcer skips itself via `current_job_id`, and the resumer is skipped via `resumer_job_id`. Active runs belonging to exempt or non-targeted jobs are also never canceled.
+
+#### Example
+
+```yaml
+targets:
+  prod:
+    variables:
+      # Only stop these specific clusters
+      target_clusters: "0410-123456-abc123,0410-789012-def456"
+      # Only stop this specific job
+      target_jobs: "230001808620939"
+      # Only stop these specific SQL warehouses
+      target_warehouses: "8c622aa24ea3a6da,a1b2c3d4e5f6"
+      # Only stop these specific apps
+      target_apps: "my-dashboard-app,data-explorer"
+      # Stop ALL clusters (default behavior — same as omitting the variable)
+      # target_clusters: "ALL"
+```
 
 ### Targets
 
 | Target | Budget Threshold | Mode |
 |--------|-----------------|------|
 | `dev` | $50,000 | development |
-| `staging` | $100,000 | — |
-| `prod` | $200,000 | production (runs as service principal) |
+| `prod` | $100,000 | production (runs as service principal) |
 
 ## Deployment
 
