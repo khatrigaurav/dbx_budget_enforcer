@@ -108,6 +108,7 @@ targets:
     variables:
       budget_threshold: "50000"
       target_jobs: "230001808620939"
+      target_warehouses: "df28338d7b36a21b"
 
 
   prod:
